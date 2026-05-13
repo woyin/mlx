@@ -20,8 +20,16 @@ try:
     import tensorflow as tf
 
     has_tf = True
-except ImportError as e:
+except ImportError:
     has_tf = False
+
+try:
+    import torch
+
+    has_torch_mps = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+except ImportError:
+    torch = None
+    has_torch_mps = False
 
 
 class TestVersion(mlx_tests.MLXTestCase):
@@ -2038,6 +2046,21 @@ class TestArray(mlx_tests.MLXTestCase):
         x = x[::2, ::2]
         y = np.from_dlpack(x)
         self.assertTrue(mx.array_equal(y, x))
+
+    @unittest.skipUnless(has_torch_mps, "PyTorch MPS is required")
+    def test_torch_mps_dlpack_non_cpu_error(self):
+        x = torch.arange(12, device="mps", dtype=torch.float32).reshape(3, 4)
+        self.assertEqual(x.__dlpack_device__()[0], 8)
+
+        with self.assertRaisesRegex(ValueError, "non-CPU DLPack"):
+            mx.array(x)
+
+        a = mx.array([1])
+        b = torch.tensor([2])
+        self.assertTrue(mx.array_equal(a + b, mx.array([3])))
+
+        with self.assertRaisesRegex(ValueError, "non-CPU DLPack"):
+            a + b.to("mps")
 
     def test_getitem_with_list(self):
         a = mx.array([1, 2, 3, 4, 5])
